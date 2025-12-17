@@ -99,10 +99,6 @@ jobs:
 
           [llvm]
           download-ci-llvm = false
-
-          [http]
-          check-revoke = false
-          ssl-version = "tlsv1.2"
           EOF
           cat config.toml
 
