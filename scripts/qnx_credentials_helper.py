@@ -42,10 +42,9 @@ def main():
         sys.exit(1)
 
     # Credentials
-    if "SCORE_QNX_USER" in os.environ and "SCORE_QNX_PASSWORD" in os.environ:
-        login = os.environ["SCORE_QNX_USER"]
-        password = os.environ["SCORE_QNX_PASSWORD"]
-    else:
+    login = os.environ.get("SCORE_QNX_USER")
+    password = os.environ.get("SCORE_QNX_PASSWORD")
+    if not (login and password):
         try:
             nrc = netrc.netrc()
             auth = nrc.authenticators("qnx.com")
