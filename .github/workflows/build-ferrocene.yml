@@ -1,0 +1,111 @@
+name: Build Ferrocene Archives
+
+on:
+  workflow_dispatch:
+    inputs:
+      ferrocene_sha:
+        description: Commit/tag SHA to build
+        required: true
+        default: "779fbed05ae9e9fe2a04137929d99cc9b3d516fd"
+
+jobs:
+  build:
+    runs-on: ${{ vars.REPO_RUNNER_LABELS && fromJSON(vars.REPO_RUNNER_LABELS) || 'ubuntu-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            triple: x86_64-unknown-linux-gnu
+            needs_qnx: false
+          - name: linux-aarch64
+            triple: aarch64-unknown-linux-gnu
+            needs_qnx: false
+          - name: qnx8-aarch64
+            triple: aarch64-unknown-nto-qnx800
+            needs_qnx: true
+          - name: qnx8-x86_64
+            triple: x86_64-pc-nto-qnx800
+            needs_qnx: true
+          - name: subset-aarch64
+            triple: aarch64-unknown-ferrocene.subset
+            needs_qnx: false
+          - name: subset-x86_64
+            triple: x86_64-unknown-ferrocene.subset
+            needs_qnx: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv (Ferrocene bootstrap dependency)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Download QNX SDP (if needed)
+        if: matrix.needs_qnx == true
+        env:
+          SCORE_QNX_USER: ${{ secrets.SCORE_QNX_USER }}
+          SCORE_QNX_PASSWORD: ${{ secrets.SCORE_QNX_PASSWORD }}
+        run: |
+          set -euo pipefail
+          QNX_ROOT="$RUNNER_TEMP/qnx_sdp"
+          mkdir -p "$QNX_ROOT"
+          ./scripts/fetch_qnx_sdp.py "https://www.qnx.com/download/download/79858/installation.tgz" "$QNX_ROOT/installation.tgz"
+          tar -C "$QNX_ROOT" -xzf "$QNX_ROOT/installation.tgz"
+          source "$QNX_ROOT/installation/qnxsdp-env.sh"
+          {
+            echo "QNX_HOST=$QNX_HOST"
+            echo "QNX_TARGET=$QNX_TARGET"
+            echo "MAKEFLAGS=$MAKEFLAGS"
+            echo "PATH=$QNX_HOST/usr/bin:$PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup QNX license (if needed)
+        if: matrix.needs_qnx == true
+        env:
+          SCORE_QNX_LICENSE: ${{ secrets.SCORE_QNX_LICENSE }}
+        run: |
+          set -euo pipefail
+          QNX_LICENSE_DIR="$RUNNER_TEMP/qnx_license"
+          mkdir -p "$QNX_LICENSE_DIR"
+          echo "$SCORE_QNX_LICENSE" | base64 --decode > "$QNX_LICENSE_DIR/licenses"
+          {
+            echo "QNX_SHARED_LICENSE_FILE=$QNX_LICENSE_DIR/licenses"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate config for target
+        run: |
+          cat > config.toml <<'EOF'
+          change-id = 999999
+          [build]
+          host = ["x86_64-unknown-linux-gnu"]
+          target = ["${{ matrix.triple }}"]
+          extended = true
+
+          [llvm]
+          download-ci-llvm = false
+
+          [http]
+          check-revoke = false
+          ssl-version = "tlsv1.2"
+          EOF
+          cat config.toml
+
+      - name: Build Ferrocene for target
+        env:
+          FERROCENE_BOOTSTRAP_TOML: config.toml
+        run: |
+          set -euo pipefail
+          ./scripts/build_ferrocene.sh \
+            --sha "${{ inputs.ferrocene_sha }}" \
+            --target "${{ matrix.triple }}" \
+            --exec x86_64-unknown-linux-gnu
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: ferrocene-${{ matrix.name }}-${{ inputs.ferrocene_sha }}
+          path: out/ferrocene/*.tar.gz
+          if-no-files-found: error

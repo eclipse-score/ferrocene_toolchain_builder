@@ -1,0 +1,12 @@
+# Build artifacts
+out/
+.cache/
+build/
+
+# Bazel output trees
+bazel-*
+
+# Editors
+.idea/
+.vscode/
+*.swp
