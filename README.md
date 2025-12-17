@@ -26,6 +26,8 @@ This avoids Ferrocene’s CI S3 downloads (which require AWS credentials/CLI). I
 
 By default only the core toolchain packages are built/installed (dist: `rustc rust-std cargo rustfmt clippy`; install: `rustc library/std cargo rustfmt clippy`) to skip doc builds that can fail on missing mdbook preprocessors or path issues. Override with `--dist-packages "<space-separated list>"` / `FERROCENE_DIST_PACKAGES` and `--install-packages "<space-separated list>"` / `FERROCENE_INSTALL_PACKAGES`.
 
+Git checkout uses a shallow clone by default (`--git-depth 1` / `FERROCENE_GIT_DEPTH=1`). Set `--full` or `--git-depth 0` if you need full history.
+
 Install step note: the script sets `DESTDIR=out/ferrocene/install` when running `x.py install` so no privileged paths are touched; the installed tree under that DESTDIR is what gets tarred.
 
 

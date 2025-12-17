@@ -35,8 +35,10 @@ def eprint(*args, **kwargs):
 
 
 def get_credentials():
-    if "SCORE_QNX_USER" in os.environ and "SCORE_QNX_PASSWORD" in os.environ:
-        return os.environ["SCORE_QNX_USER"], os.environ["SCORE_QNX_PASSWORD"]
+    user = os.environ.get("SCORE_QNX_USER")
+    password = os.environ.get("SCORE_QNX_PASSWORD")
+    if user and password:
+        return user, password
     try:
         nrc = netrc.netrc()
         auth = nrc.authenticators("qnx.com")
@@ -45,10 +47,12 @@ def get_credentials():
             return login, password
     except Exception:
         pass
-    raise SystemExit("No credentials found (set SCORE_QNX_USER / SCORE_QNX_PASSWORD or ~/.netrc for qnx.com)")
+    raise SystemExit(
+        "No credentials found (set SCORE_QNX_USER / SCORE_QNX_PASSWORD or ~/.netrc for qnx.com)"
+    )
 
 
-def login(opener):
+def login(opener, cookie_jar):
     user, password = get_credentials()
     form_data = urllib.parse.urlencode(
         {"userlogin": user, "password": password, "UseCookie": "1"}
@@ -56,6 +60,9 @@ def login(opener):
     resp = opener.open("https://www.qnx.com/account/login.html", form_data)
     if resp.status != 200:
         raise SystemExit("Failed to login to QNX (status %s)" % resp.status)
+    cookies = {c.name: c.value for c in cookie_jar}
+    if "myQNX" not in cookies:
+        raise SystemExit("Login succeeded but myQNX cookie was not issued; check credentials.")
 
 
 def download_with_cookies(url, dest):
@@ -63,10 +70,21 @@ def download_with_cookies(url, dest):
     opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
     urllib.request.install_opener(opener)
 
-    login(opener)
+    login(opener, cookie_jar)
 
-    with opener.open(url) as r, open(dest, "wb") as f:
-        shutil.copyfileobj(r, f)
+    with opener.open(url) as r:
+        first = r.read(4)
+        content_type = r.headers.get("Content-Type", "")
+        if first[:2] != b"\x1f\x8b":
+            snippet = first + r.read(256)
+            text = snippet.decode("utf-8", errors="replace")
+            raise SystemExit(
+                "Download did not look like gzip (Content-Type: %s). "
+                "Got response:\n%s" % (content_type, text)
+            )
+        with open(dest, "wb") as f:
+            f.write(first)
+            shutil.copyfileobj(r, f)
 
 
 def main():

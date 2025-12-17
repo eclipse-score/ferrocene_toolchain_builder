@@ -31,6 +31,7 @@ JOBS="${FERROCENE_JOBS:-}"
 BOOTSTRAP_TOML="${FERROCENE_BOOTSTRAP_TOML:-}"
 DIST_PACKAGES="${FERROCENE_DIST_PACKAGES:-rustc rust-std cargo rustfmt clippy}"
 INSTALL_PACKAGES="${FERROCENE_INSTALL_PACKAGES:-rustc library/std cargo rustfmt clippy}"
+GIT_DEPTH="${FERROCENE_GIT_DEPTH:-1}"
 
 usage() {
   cat <<'EOF'
@@ -49,9 +50,12 @@ Optional:
   --bootstrap <path>      Path to write bootstrap.toml (default: <src-dir>/bootstrap.toml)
   --dist-packages "<pkgs>" Space-separated list of dist/install packages (default: "rustc rust-std cargo rustfmt clippy")
   --install-packages "<pkgs>" Space-separated list of install packages (default: "rustc library/std cargo rustfmt clippy")
+  --git-depth <n>         Git clone/fetch depth (default: 1). Use 0 for full history.
+  --full                  Alias for --git-depth 0
 
 Environment overrides:
-  FERROCENE_REPO_URL, FERROCENE_SRC_DIR, FERROCENE_OUT_DIR, FERROCENE_SHA, FERROCENE_JOBS, FERROCENE_BOOTSTRAP_TOML, FERROCENE_DIST_PACKAGES, FERROCENE_INSTALL_PACKAGES
+  FERROCENE_REPO_URL, FERROCENE_SRC_DIR, FERROCENE_OUT_DIR, FERROCENE_SHA, FERROCENE_JOBS,
+  FERROCENE_BOOTSTRAP_TOML, FERROCENE_DIST_PACKAGES, FERROCENE_INSTALL_PACKAGES, FERROCENE_GIT_DEPTH
 EOF
 }
 
@@ -67,6 +71,8 @@ while [[ $# -gt 0 ]]; do
     --bootstrap) BOOTSTRAP_TOML="$2"; shift 2 ;;
     --dist-packages) DIST_PACKAGES="$2"; shift 2 ;;
     --install-packages) INSTALL_PACKAGES="$2"; shift 2 ;;
+    --git-depth) GIT_DEPTH="$2"; shift 2 ;;
+    --full) GIT_DEPTH=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
@@ -75,6 +81,11 @@ done
 if [[ -z "${FERROCENE_SHA}" ]]; then
   echo "ERROR: --sha (or FERROCENE_SHA) is required." >&2
   usage
+  exit 1
+fi
+
+if ! [[ "${GIT_DEPTH}" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: --git-depth must be a non-negative integer (0 for full history)." >&2
   exit 1
 fi
 
@@ -97,13 +108,21 @@ fi
 mkdir -p "${SRC_DIR}" "${OUT_DIR}"
 
 if [[ ! -d "${SRC_DIR}/.git" ]]; then
-  git clone "${REPO_URL}" "${SRC_DIR}"
+  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
+    git clone --no-checkout --depth "${GIT_DEPTH}" "${REPO_URL}" "${SRC_DIR}"
+  else
+    git clone "${REPO_URL}" "${SRC_DIR}"
+  fi
 else
   git -C "${SRC_DIR}" remote set-url origin "${REPO_URL}"
 fi
 
-git -C "${SRC_DIR}" fetch --all
-git -C "${SRC_DIR}" checkout "${FERROCENE_SHA}"
+if [[ "${GIT_DEPTH}" -gt 0 ]]; then
+  git -C "${SRC_DIR}" fetch --depth "${GIT_DEPTH}" origin "${FERROCENE_SHA}"
+else
+  git -C "${SRC_DIR}" fetch --all
+fi
+git -C "${SRC_DIR}" checkout --detach "${FERROCENE_SHA}"
 
 BOOTSTRAP_TOML="${BOOTSTRAP_TOML:-${SRC_DIR}/bootstrap.toml}"
 if [[ -f "${BOOTSTRAP_TOML}" ]]; then
