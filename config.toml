@@ -1,0 +1,36 @@
+# *******************************************************************************
+# Copyright (c) 2025 Contributors to the Eclipse Foundation
+#
+# See the NOTICE file(s) distributed with this work for additional
+# information regarding copyright ownership.
+#
+# This program and the accompanying materials are made available under the
+# terms of the Apache License Version 2.0 which is available at
+# https://www.apache.org/licenses/LICENSE-2.0
+#
+# SPDX-License-Identifier: Apache-2.0
+# *******************************************************************************
+
+# Bootstrap configuration used by `scripts/build_ferrocene.sh` when provided via
+# `FERROCENE_BOOTSTRAP_TOML=./config.toml`.
+
+change-id = "ignore"
+profile = "dist"
+
+[build]
+extended = true
+
+[install]
+# When `DESTDIR` is set (the build script does this), this makes the installed
+# tree land directly under DESTDIR (bin/, lib/, share/, ...) instead of
+# DESTDIR/usr/local/...
+prefix = ""
+
+[llvm]
+download-ci-llvm = false
+
+[gcc]
+download-ci-gcc = false
+
+[rust]
+download-rustc = false

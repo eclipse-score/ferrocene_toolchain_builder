@@ -1,10 +1,13 @@
-# Ferrocene Bazel Toolchain Builder
+# score_ferrocene_builder
 
-This repository builds the [ferrocene](https://github.com/ferrocene/ferrocene) compiler from a specific commit and wraps the resulting binaries as an archive so consumer repositories can register a `rules_rust` toolchain without forking the upstream sources.
+This repository builds the [ferrocene](https://github.com/ferrocene/ferrocene) compiler from a specific commit and packages the resulting install tree as a tarball (suitable for use as a pinned toolchain archive in other build systems).
 
 ## Prerequisites
-- git, python3, [uv](https://github.com/astral-sh/uv) on PATH (Ferrocene bootstrap requires it) and a toolchain capable of building Ferrocene/Rust (LLVM, C/C++ build deps, etc.)
+- `git`, `python3`, and [`uv`](https://github.com/astral-sh/uv) on `PATH` (Ferrocene bootstrap requires it).
+- A toolchain capable of building Ferrocene/Rust (LLVM + common C/C++ build deps).
 - Network access to `https://github.com/ferrocene/ferrocene.git` (or a mirror you provide).
+- If building QNX targets: a working QNX SDP + license and `source /path/to/qnxsdp-env.sh`.
+- If building `aarch64-unknown-linux-gnu`: `aarch64-linux-gnu-gcc` (Debian/Ubuntu: `gcc-aarch64-linux-gnu g++-aarch64-linux-gnu`).
 
 ## Build and Package Ferrocene
 ```bash
@@ -30,15 +33,30 @@ Git checkout uses a shallow clone by default (`--git-depth 1` / `FERROCENE_GIT_D
 
 Install step note: the script sets `DESTDIR=out/ferrocene/install` when running `x.py install` so no privileged paths are touched; the installed tree under that DESTDIR is what gets tarred.
 
+## Multi-target (Linux + QNX) build
+When passing a comma-separated target list, the script builds a single install tree containing the host tools and all requested target stdlibs, then emits one archive:
+- `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.tar.gz`
+- `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.targets.txt` (records the exact target list)
 
-## What the Module Produces
-The `ferrocene_toolchain` extension wraps the archive into a repository that exposes:
-- Binaries: `:rustc`, `:cargo`, `:rustdoc`, `:clippy_driver`, `:rustfmt`
-- Standard library: `:rust_std-<target>`
-- Host libs for rustc: `:rustc_lib`
+For QNX targets, make sure your environment is set up first:
+```bash
+source /path/to/qnxsdp-env.sh
+```
 
+Then run the build with `config.toml` (generic bootstrap settings). `scripts/build_ferrocene.sh` will
+auto-configure QNX builds by exporting per-target `CC_*`, `CFLAGS_*` (the `-V...` selector), and `AR_*`
+so `qcc` is invoked in the correct architecture mode:
+```bash
+SHA=779fbed05ae9e9fe2a04137929d99cc9b3d516fd
+TARGETS="x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-nto-qnx800,aarch64-unknown-nto-qnx800,x86_64-unknown-ferrocene.subset"
 
-No fork of the Ferrocene sources is required; only the commit SHA and the resulting archive URL are pinned in the consuming repository.
+FERROCENE_BOOTSTRAP_TOML=./config.toml \
+  ./scripts/build_ferrocene.sh \
+    --sha "$SHA" \
+    --target "$TARGETS" \
+    --exec x86_64-unknown-linux-gnu \
+    --jobs "$(nproc)"
+```
 
 ## QNX SDP Download Without Bazel
 If you need QNX in CI without Bazel:
