@@ -2,6 +2,8 @@
 out/
 .cache/
 build/
+out-host-old/
+build-host-old/
 
 # Bazel output trees
 bazel-*

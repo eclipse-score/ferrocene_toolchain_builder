@@ -1,0 +1,35 @@
+thread 'rustc' panicked at ferrocene/tools/symbol-report/src/main.rs:44:41:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0:     0x7f068a62ad2b - std::backtrace::Backtrace::create::h652c7106100133e9
+   1:     0x7f068a62ac75 - std::backtrace::Backtrace::force_capture::hcbb8a9548a20f2ec
+   2:     0x7f06824c6c18 - std[e20d0b87aa1ec278]::panicking::update_hook::<alloc[d35db71d034d3387]::boxed::Box<rustc_driver_impl[ebdac3bc0c642212]::install_ice_hook::{closure#1}>>::{closure#0}
+   3:     0x7f068a62bc7f - std::panicking::panic_with_hook::hd57cd463d793ed79
+   4:     0x7f068a62b9f6 - std::panicking::panic_handler::{{closure}}::hddd6216c3fddee3b
+   5:     0x7f068a623349 - std::sys::backtrace::__rust_end_short_backtrace::h5e7a56f283378525
+   6:     0x7f068a5ff50d - __rustc[256c90bb7e548b45]::rust_begin_unwind
+   7:     0x7f068a69cc70 - core::panicking::panic_fmt::hf19c198748ef6a95
+   8:     0x7f068a69cc4c - core::panicking::panic::h5387b4c27e81d0dd
+   9:     0x7f068a69b539 - core::option::unwrap_failed::he1ebbf499f413322
+  10:     0x5571ad1970cf - <symbol_report[1655f934c33ab76f]::Vis>::convert_span
+  11:     0x5571ad197b97 - <symbol_report[1655f934c33ab76f]::LoadCoreSymbols as rustc_driver_impl[ebdac3bc0c642212]::Callbacks>::after_expansion
+  12:     0x7f06824dd3d7 - <std[e20d0b87aa1ec278]::thread::local::LocalKey<core[5b293a957d0a6e5f]::cell::Cell<*const ()>>>::with::<rustc_middle[8adcbb7b0a376aaa]::ty::context::tls::enter_context<<rustc_middle[8adcbb7b0a376aaa]::ty::context::GlobalCtxt>::enter<rustc_interface[64f4b86c131bf90e]::passes::create_and_enter_global_ctxt<core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>, rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}::{closure#2}>::{closure#2}::{closure#0}, core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>>::{closure#1}, core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>>::{closure#0}, core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>>
+  13:     0x7f0682521ecb - <rustc_middle[8adcbb7b0a376aaa]::ty::context::TyCtxt>::create_global_ctxt::<core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>, rustc_interface[64f4b86c131bf90e]::passes::create_and_enter_global_ctxt<core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>, rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}::{closure#2}>::{closure#2}::{closure#0}>
+  14:     0x7f06824b7390 - <rustc_interface[64f4b86c131bf90e]::passes::create_and_enter_global_ctxt<core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>, rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}::{closure#2}>::{closure#2} as core[5b293a957d0a6e5f]::ops::function::FnOnce<(&rustc_session[3ff16c0e58c09af7]::session::Session, rustc_middle[8adcbb7b0a376aaa]::ty::context::CurrentGcx, alloc[d35db71d034d3387]::sync::Arc<rustc_data_structures[b19502c4e79d06de]::jobserver::Proxy>, &std[e20d0b87aa1ec278]::sync::once_lock::OnceLock<rustc_middle[8adcbb7b0a376aaa]::ty::context::GlobalCtxt>, &rustc_data_structures[b19502c4e79d06de]::sync::worker_local::WorkerLocal<rustc_middle[8adcbb7b0a376aaa]::arena::Arena>, &rustc_data_structures[b19502c4e79d06de]::sync::worker_local::WorkerLocal<rustc_hir[4e91ac311f8a0c8c]::Arena>, rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}::{closure#2})>>::call_once::{shim:vtable#0}
+  15:     0x7f06824b5df9 - rustc_interface[64f4b86c131bf90e]::passes::create_and_enter_global_ctxt::<core[5b293a957d0a6e5f]::option::Option<rustc_interface[64f4b86c131bf90e]::queries::Linker>, rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}::{closure#2}>
+  16:     0x7f06824f203e - rustc_span[c76a7af743629abe]::create_session_globals_then::<(), rustc_interface[64f4b86c131bf90e]::util::run_in_thread_with_globals<rustc_interface[64f4b86c131bf90e]::util::run_in_thread_pool_with_globals<rustc_interface[64f4b86c131bf90e]::interface::run_compiler<(), rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}::{closure#0}>
+  17:     0x7f068253dc59 - std[e20d0b87aa1ec278]::sys::backtrace::__rust_begin_short_backtrace::<rustc_interface[64f4b86c131bf90e]::util::run_in_thread_with_globals<rustc_interface[64f4b86c131bf90e]::util::run_in_thread_pool_with_globals<rustc_interface[64f4b86c131bf90e]::interface::run_compiler<(), rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>
+  18:     0x7f0682540a0e - <<std[e20d0b87aa1ec278]::thread::Builder>::spawn_unchecked_<rustc_interface[64f4b86c131bf90e]::util::run_in_thread_with_globals<rustc_interface[64f4b86c131bf90e]::util::run_in_thread_pool_with_globals<rustc_interface[64f4b86c131bf90e]::interface::run_compiler<(), rustc_driver_impl[ebdac3bc0c642212]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>::{closure#1} as core[5b293a957d0a6e5f]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  19:     0x7f068a61db6f - std::sys::thread::unix::Thread::new::thread_start::hbaf586a9e50a98cd
+  20:     0x7f067d5d8aa4 - start_thread
+                               at ./nptl/pthread_create.c:447:8
+  21:     0x7f067d665c6c - clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:78:0
+  22:                0x0 - <unknown>
+
+
+rustc version: 1.94.0-nightly (779fbed05 2025-12-11) (Ferrocene rolling)
+platform: x86_64-unknown-linux-gnu
+
+query stack during panic:
+end of query stack

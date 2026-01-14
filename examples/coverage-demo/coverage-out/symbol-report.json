@@ -1,0 +1,1 @@
+{"symbols": [{"qualified_name": "coverage_demo::add", "filename": "src/lib.rs", "start_line": 1, "end_line": 3}, {"qualified_name": "coverage_demo::maybe_div", "filename": "src/lib.rs", "start_line": 5, "end_line": 11}], "annotations": {}}

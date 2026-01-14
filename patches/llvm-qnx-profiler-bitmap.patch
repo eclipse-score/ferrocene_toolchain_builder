@@ -1,0 +1,48 @@
+diff --git a/compiler-rt/lib/profile/InstrProfilingPlatformOther.c b/compiler-rt/lib/profile/InstrProfilingPlatformOther.c
+--- a/compiler-rt/lib/profile/InstrProfilingPlatformOther.c
++++ b/compiler-rt/lib/profile/InstrProfilingPlatformOther.c
+@@
+ static const char *VNamesFirst = NULL;
+ static const char *VNamesLast = NULL;
+ static char *CountersFirst = NULL;
+ static char *CountersLast = NULL;
++static char *BitmapFirst = NULL;
++static char *BitmapLast = NULL;
+@@
+ void __llvm_profile_register_function(void *Data_) {
+   /* TODO: Only emit this function if we can't use linker magic. */
+   const __llvm_profile_data *Data = (__llvm_profile_data *)Data_;
++  char *BitmapStart = NULL;
++  char *BitmapEnd = NULL;
++
++  if (Data->NumBitmapBytes) {
++    BitmapStart = (char *)((uintptr_t)Data_ + Data->BitmapPtr);
++    BitmapEnd = BitmapStart + Data->NumBitmapBytes;
++  }
+   if (!DataFirst) {
+     DataFirst = Data;
+     DataLast = Data + 1;
+     CountersFirst = (char *)((uintptr_t)Data_ + Data->CounterPtr);
+     CountersLast =
+         CountersFirst + Data->NumCounters * __llvm_profile_counter_entry_size();
++    if (BitmapStart) {
++      BitmapFirst = BitmapStart;
++      BitmapLast = BitmapEnd;
++    }
+     return;
+   }
+@@
+   CountersLast = (char *)getMaxAddr(
+       CountersLast,
+       (char *)((uintptr_t)Data_ + Data->CounterPtr) +
+           Data->NumCounters * __llvm_profile_counter_entry_size());
++  if (BitmapStart) {
++    if (!BitmapFirst) {
++      BitmapFirst = BitmapStart;
++      BitmapLast = BitmapEnd;
++    } else {
++      BitmapFirst = (char *)getMinAddr(BitmapFirst, BitmapStart);
++      BitmapLast = (char *)getMaxAddr(BitmapLast, BitmapEnd);
++    }
++  }
+ }
