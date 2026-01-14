@@ -115,6 +115,23 @@ so `qcc` is invoked in the correct architecture mode:
 SHA=779fbed05ae9e9fe2a04137929d99cc9b3d516fd
 TARGETS="x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-nto-qnx800,aarch64-unknown-nto-qnx800,x86_64-unknown-ferrocene.subset"
 
+## Multi-target (Linux + QNX) build
+When passing a comma-separated target list, the script builds a single install tree containing the host tools and all requested target stdlibs, then emits one archive:
+- `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.tar.gz`
+- `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.targets.txt` (records the exact target list)
+
+For QNX targets, make sure your environment is set up first:
+```bash
+source /path/to/qnxsdp-env.sh
+```
+
+Then run the build with `config.toml` (generic bootstrap settings). `scripts/build_ferrocene.sh` will
+auto-configure QNX builds by exporting per-target `CC_*`, `CFLAGS_*` (the `-V...` selector), and `AR_*`
+so `qcc` is invoked in the correct architecture mode:
+```bash
+SHA=779fbed05ae9e9fe2a04137929d99cc9b3d516fd
+TARGETS="x86_64-unknown-linux-gnu,aarch64-unknown-linux-gnu,x86_64-pc-nto-qnx800,aarch64-unknown-nto-qnx800,x86_64-unknown-ferrocene.subset"
+
 FERROCENE_BOOTSTRAP_TOML=./config.toml \
   ./scripts/build_ferrocene.sh \
     --sha "$SHA" \
