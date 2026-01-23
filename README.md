@@ -38,6 +38,7 @@ Install step note: the script sets `DESTDIR=out/ferrocene/install` when running 
 - Profiling is enabled via `config.profiler.toml` to include `libprofiler_builtins` in the sysroot.
 - QNX targets are currently built without profiling due to compiler-rt profiler runtime issues; use `config.toml` for QNX until that is fixed.
 - Coverage helpers (`symbol-report`, `blanket`) are built via `scripts/build_coverage_tools.sh`; a runnable demo is in `examples/coverage-demo/`.
+- Note: `blanket` is a bootstrap tool and is only built in stage1; when using `--stage 2` to match `symbol-report` with the stage2 toolchain, the script will fall back to the stage1 `blanket`.
 
 ### Build commands (per-target archives)
 Build Linux + Ferrocene subset targets with profiling enabled (produces one tarball per target under `out/ferrocene-ubuntu20-prof/`):
@@ -68,7 +69,68 @@ docker run --rm -it \
   '
 ```
 
+That will emit four separate archives under `out/ferrocene-ubuntu20-prof/`, each named `ferrocene-<sha>-<target>.tar.gz`.
+
+If you want `symbol-report` to match the stage2 toolchain, build the coverage tools at stage2 (the script will reuse the stage1 `blanket`):
+```bash
+docker run --rm -it \
+  -e SHA="779fbed05ae9e9fe2a04137929d99cc9b3d516fd" \
+  -v "/home/dcalavrezo/sources/ferrocene_builder:/work" -w /work \
+  ferrocene-ubuntu20 bash -lc '
+    set -euo pipefail
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends pkg-config
+
+    export FERROCENE_BOOTSTRAP_TOML=./config.profiler.toml
+    export FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu20-prof
+    export FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu20-prof
+
+    for target in \
+      aarch64-unknown-linux-gnu \
+      x86_64-unknown-linux-gnu \
+      aarch64-unknown-ferrocene.subset \
+      x86_64-unknown-ferrocene.subset
+    do
+      ./scripts/build_ferrocene.sh --sha "$SHA" --target "$target" --exec x86_64-unknown-linux-gnu
+    done
+
+    # Host tools only need to be built once
+    ./scripts/build_coverage_tools.sh --sha "$SHA" --host x86_64-unknown-linux-gnu \
+      --build-dir /work/.cache/ferrocene-src-ubuntu20-prof/build --stage 2
+  '
+```
+
 Build QNX targets without profiling (per-target archives under `out/ferrocene-ubuntu20-qnx/`):
+```bash
+mkdir -p .qnx-config
+export QNX_SDP="$HOME/qnx800"
+export QNX_LICENSE="$HOME/.qnx/license/licenses"
+
+docker run --rm -it \
+  -e SHA="779fbed05ae9e9fe2a04137929d99cc9b3d516fd" \
+  -v "$PWD:/work" -w /work \
+  -v "$QNX_SDP:/opt/qnx:ro" \
+  -v "$QNX_LICENSE:/opt/qnx-license/licenses:ro" \
+  -v "$PWD/.qnx-config:/qnx-config" \
+  ferrocene-ubuntu20 bash -lc '
+    set -euo pipefail
+    export QNX_HOST=/opt/qnx/host/linux/x86_64
+    export QNX_TARGET=/opt/qnx/target/qnx
+    export QNX_CONFIGURATION_EXCLUSIVE=/qnx-config
+    export QNX_SHARED_LICENSE_FILE=/opt/qnx-license/licenses
+    export PATH="$QNX_HOST/usr/bin:$PATH"
+
+    export FERROCENE_BOOTSTRAP_TOML=./config.toml
+    export FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu20-qnx
+    export FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu20-qnx
+
+    for target in aarch64-unknown-nto-qnx800 x86_64-pc-nto-qnx800; do
+      ./scripts/build_ferrocene.sh --sha "$SHA" --target "$target" --exec x86_64-unknown-linux-gnu
+    done
+  '
+```
+
+When you’re ready to build QNX without profiling (same image), do the same pattern but with QNX env and `config.toml`:
 ```bash
 mkdir -p .qnx-config
 export QNX_SDP="$HOME/qnx800"

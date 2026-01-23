@@ -4,7 +4,7 @@ out/
 build/
 out-host-old/
 build-host-old/
-
+/examples/coverage-demo/coverage-out/
 # Bazel output trees
 bazel-*
 

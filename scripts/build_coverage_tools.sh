@@ -172,7 +172,15 @@ if [[ "${HOST_TRIPLE}" == *"windows"* ]]; then
 fi
 
 SYMBOL_BIN="${TOOLS_DIR}/symbol-report${EXT}"
-BLANKET_BIN="${TOOLS_DIR}/blanket${EXT}"
+BLANKET_TOOLS_DIR="${TOOLS_DIR}"
+if [[ "${STAGE}" -gt 1 ]]; then
+  FALLBACK_BLANKET_DIR="${BUILD_DIR_ABS}/${HOST_TRIPLE}/stage1-tools-bin"
+  if [[ ! -x "${BLANKET_TOOLS_DIR}/blanket${EXT}" && -x "${FALLBACK_BLANKET_DIR}/blanket${EXT}" ]]; then
+    echo "NOTE: blanket is built with the bootstrap compiler; using stage1 blanket at ${FALLBACK_BLANKET_DIR}"
+    BLANKET_TOOLS_DIR="${FALLBACK_BLANKET_DIR}"
+  fi
+fi
+BLANKET_BIN="${BLANKET_TOOLS_DIR}/blanket${EXT}"
 
 for bin in "${SYMBOL_BIN}" "${BLANKET_BIN}"; do
   if [[ ! -x "${bin}" ]]; then
