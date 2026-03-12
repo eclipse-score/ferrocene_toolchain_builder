@@ -166,6 +166,44 @@ docker run --rm -it \
   '
 ```
 
+### Standalone `rust-src` for Miri / Bazel
+`miri` and `cargo-miri` are packaged into the host toolchain archives, but `cargo miri setup` also needs the Rust library sources. Those sources are target-independent, so publish them once as a separate asset instead of copying them into every target archive.
+
+To build a standalone `rust-src-<sha>.tar.gz` while reusing the existing Linux profiling checkout cache:
+```bash
+FERROCENE_SRC_DIR=./.cache/ferrocene-src-ubuntu20-prof \
+FERROCENE_OUT_DIR=./out/ferrocene \
+  ./scripts/build_rust_src.sh --sha 779fbed05ae9e9fe2a04137929d99cc9b3d516fd
+```
+
+That emits:
+- `out/ferrocene/rust-src-<sha>.tar.gz`
+- `out/ferrocene/rust-src-<sha>.tar.gz.sha256`
+
+The archive unpacks to a source tree root containing:
+- `library/`
+- `src/llvm-project/libunwind/`
+- `ferrocene/library/libc/`
+- `ferrocene/library/backtrace-rs/`
+
+For Bazel, consume the host toolchain archive and the standalone `rust-src` archive together. In the Miri action:
+- expose both archives as inputs
+- set `MIRI_LIB_SRC` to the extracted `rust-src` `library` directory
+- set `MIRI_SYSROOT` to a writable scratch directory
+
+Example environment for a Bazel action:
+```bash
+export PATH="${TOOLCHAIN_ROOT}/bin:$PATH"
+export LD_LIBRARY_PATH="${TOOLCHAIN_ROOT}/lib"
+export MIRI_LIB_SRC="${RUST_SRC_ROOT}/library"
+export MIRI_SYSROOT="${TMPDIR}/miri-sysroot"
+
+cargo miri setup --target x86_64-unknown-linux-gnu
+cargo miri test --target x86_64-unknown-linux-gnu
+```
+
+`cargo-miri` validates that `MIRI_LIB_SRC` ends in `library`, so point it at the extracted `library/` directory, not the archive root.
+
 ## Multi-target (Linux + QNX) build
 When passing a comma-separated target list, the script builds a single install tree containing the host tools and all requested target stdlibs, then emits one archive:
 - `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.tar.gz`
