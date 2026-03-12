@@ -27,7 +27,7 @@ The script auto-generates `<src>/bootstrap.toml` (override with `--bootstrap` or
 
 This avoids Ferrocene’s CI S3 downloads (which require AWS credentials/CLI). If you prefer CI artifacts, remove or adjust those settings and ensure `aws` is available and configured.
 
-By default only the core toolchain packages are built/installed (dist: `rustc rust-std cargo rustfmt clippy`; install: `rustc library/std cargo rustfmt clippy`) to skip doc builds that can fail on missing mdbook preprocessors or path issues. Override with `--dist-packages "<space-separated list>"` / `FERROCENE_DIST_PACKAGES` and `--install-packages "<space-separated list>"` / `FERROCENE_INSTALL_PACKAGES`.
+By default the core toolchain packages plus `miri` are built/installed (dist: `rustc rust-std cargo rustfmt clippy miri`; install: `rustc library/std cargo rustfmt clippy miri`) to skip doc builds that can fail on missing mdbook preprocessors or path issues. Override with `--dist-packages "<space-separated list>"` / `FERROCENE_DIST_PACKAGES` and `--install-packages "<space-separated list>"` / `FERROCENE_INSTALL_PACKAGES`.
 
 Git checkout uses a shallow clone by default (`--git-depth 1` / `FERROCENE_GIT_DEPTH=1`). Set `--full` or `--git-depth 0` if you need full history.
 
@@ -114,6 +114,9 @@ docker run --rm -it \
   -v "$PWD/.qnx-config:/qnx-config" \
   ferrocene-ubuntu20 bash -lc '
     set -euo pipefail
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
+
     export QNX_HOST=/opt/qnx/host/linux/x86_64
     export QNX_TARGET=/opt/qnx/target/qnx
     export QNX_CONFIGURATION_EXCLUSIVE=/qnx-config
@@ -144,6 +147,9 @@ docker run --rm -it \
   -v "$PWD/.qnx-config:/qnx-config" \
   ferrocene-ubuntu20 bash -lc '
     set -euo pipefail
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends pkg-config libssl-dev
+
     export QNX_HOST=/opt/qnx/host/linux/x86_64
     export QNX_TARGET=/opt/qnx/target/qnx
     export QNX_CONFIGURATION_EXCLUSIVE=/qnx-config

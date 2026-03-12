@@ -29,8 +29,8 @@ EXEC_TRIPLE="x86_64-unknown-linux-gnu"
 FERROCENE_SHA="${FERROCENE_SHA:-}"
 JOBS="${FERROCENE_JOBS:-}"
 BOOTSTRAP_TOML="${FERROCENE_BOOTSTRAP_TOML:-}"
-DIST_PACKAGES="${FERROCENE_DIST_PACKAGES:-rustc rust-std cargo rustfmt clippy}"
-INSTALL_PACKAGES="${FERROCENE_INSTALL_PACKAGES:-rustc library/std cargo rustfmt clippy}"
+DIST_PACKAGES="${FERROCENE_DIST_PACKAGES:-rustc rust-std cargo rustfmt clippy miri}"
+INSTALL_PACKAGES="${FERROCENE_INSTALL_PACKAGES:-rustc library/std cargo rustfmt clippy miri}"
 GIT_DEPTH="${FERROCENE_GIT_DEPTH:-1}"
 
 usage() {
@@ -48,8 +48,8 @@ Optional:
   --out-dir <path>        Output directory for artifacts (default: out/ferrocene)
   --jobs <n>              Parallel jobs passed to x.py (-j)
   --bootstrap <path>      Path to write bootstrap.toml (default: <src-dir>/bootstrap.toml)
-  --dist-packages "<pkgs>" Space-separated list of dist/install packages (default: "rustc rust-std cargo rustfmt clippy")
-  --install-packages "<pkgs>" Space-separated list of install packages (default: "rustc library/std cargo rustfmt clippy")
+  --dist-packages "<pkgs>" Space-separated list of dist/install packages (default: "rustc rust-std cargo rustfmt clippy miri")
+  --install-packages "<pkgs>" Space-separated list of install packages (default: "rustc library/std cargo rustfmt clippy miri")
   --git-depth <n>         Git clone/fetch depth (default: 1). Use 0 for full history.
   --full                  Alias for --git-depth 0
 
