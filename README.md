@@ -71,6 +71,48 @@ docker run --rm -it \
 
 That will emit four separate archives under `out/ferrocene-ubuntu20-prof/`, each named `ferrocene-<sha>-<target>.tar.gz`.
 
+### Ubuntu 24 variant
+Ferrocene also ships `ferrocene/ci/docker-images/ubuntu-24/Dockerfile`. Unlike the Ubuntu 20 image, the upstream Ubuntu 24 image does not install the AArch64 GNU cross toolchain, so Linux + subset builds that include `aarch64-*` targets need a few extra packages in the container.
+
+Build the local image from the cached Ferrocene checkout:
+```bash
+docker build --tag ferrocene-ubuntu24 \
+  --file .cache/ferrocene-src-ubuntu20-prof/ferrocene/ci/docker-images/ubuntu-24/Dockerfile \
+  .cache/ferrocene-src-ubuntu20-prof
+```
+
+Then run the Linux + Ferrocene subset build with a separate Ubuntu 24 cache/output tree:
+```bash
+docker run --rm -it \
+  -e SHA="779fbed05ae9e9fe2a04137929d99cc9b3d516fd" \
+  -v "/home/dcalavrezo/sources/ferrocene_builder:/work" -w /work \
+  ferrocene-ubuntu24 bash -lc '
+    set -euo pipefail
+    sudo apt-get update
+    sudo apt-get install -y --no-install-recommends \
+      pkg-config \
+      gcc-aarch64-linux-gnu \
+      g++-aarch64-linux-gnu \
+      binutils-aarch64-linux-gnu \
+      libc6-dev-arm64-cross
+
+    export FERROCENE_BOOTSTRAP_TOML=./config.profiler.toml
+    export FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu24-prof
+    export FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu24-prof
+
+    for target in \
+      aarch64-unknown-linux-gnu \
+      x86_64-unknown-linux-gnu \
+      aarch64-unknown-ferrocene.subset \
+      x86_64-unknown-ferrocene.subset
+    do
+      ./scripts/build_ferrocene.sh --sha "$SHA" --target "$target" --exec x86_64-unknown-linux-gnu
+    done
+  '
+```
+
+If you only need x86_64 outputs, drop the `aarch64-*` targets and the extra AArch64 cross packages. Coverage tools and `rust-src` can be rebuilt the same way as above, just switching to `ferrocene-ubuntu24` and the `ubuntu24` cache/output directories. For QNX, reuse the QNX recipe below with `ferrocene-ubuntu24`, `FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu24-qnx`, `FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu24-qnx`, and `pkg-config`; the Ubuntu 24 image already includes `libssl-dev`.
+
 If you want `symbol-report` to match the stage2 toolchain, build the coverage tools at stage2 (the script will reuse the stage1 `blanket`):
 ```bash
 docker run --rm -it \
