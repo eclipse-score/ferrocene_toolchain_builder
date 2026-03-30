@@ -246,6 +246,38 @@ cargo miri test --target x86_64-unknown-linux-gnu
 
 `cargo-miri` validates that `MIRI_LIB_SRC` ends in `library`, so point it at the extracted `library/` directory, not the archive root.
 
+### Prebuilt Miri sysroots
+For the direct `miri` driver and Bazel integration, it is better to prebuild the Miri sysroot once and ship it as a release artifact instead of running `cargo-miri setup` inside Bazel fetches or actions.
+
+Build the supported Ubuntu 24.04 sysroots from the released host toolchain and standalone `rust-src` asset:
+```bash
+./scripts/build_miri_sysroots.sh --sha 779fbed05ae9e9fe2a04137929d99cc9b3d516fd --offline
+```
+
+Default supported targets:
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+- `x86_64-pc-nto-qnx800`
+- `aarch64-unknown-nto-qnx800`
+
+Current limitation:
+- `x86_64-unknown-ferrocene.subset` and `aarch64-unknown-ferrocene.subset` are not packaged because the std/sysroot build currently fails for those targets.
+
+Package the successful sysroots as release assets:
+```bash
+./scripts/package_miri_sysroots.sh --sha 779fbed05ae9e9fe2a04137929d99cc9b3d516fd
+```
+
+That emits one archive and one checksum file per successful target under `out/ferrocene-ubuntu24-prof/`:
+- `miri-sysroot-<sha>-<target>.tar.gz`
+- `miri-sysroot-<sha>-<target>.tar.gz.sha256`
+
+Each archive contains the prebuilt sysroot root for exactly one target:
+- `lib/rustlib/<target>/...`
+- `BUILD-INFO.txt`
+
+These archives are target-specific, unlike `rust-src`.
+
 ## Multi-target (Linux + QNX) build
 When passing a comma-separated target list, the script builds a single install tree containing the host tools and all requested target stdlibs, then emits one archive:
 - `out/ferrocene/ferrocene-<sha>-<exec>-multi-<hash>.tar.gz`
