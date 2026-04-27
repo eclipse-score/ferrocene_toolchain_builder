@@ -32,7 +32,7 @@ FERROCENE_SHA="${FERROCENE_SHA:-}"
 JOBS="${FERROCENE_JOBS:-}"
 BOOTSTRAP_TOML="${FERROCENE_BOOTSTRAP_TOML:-}"
 GIT_DEPTH="${FERROCENE_GIT_DEPTH:-1}"
-STAGE="${FERROCENE_STAGE:-1}"
+STAGE="${FERROCENE_STAGE:-2}"
 
 usage() {
   cat <<'EOF'
@@ -49,7 +49,7 @@ Optional:
   --build-dir <path>      x.py build directory (default: ./build relative to CWD)
   --jobs <n>              Parallel jobs passed to x.py (-j)
   --bootstrap <path>      Path to bootstrap/config toml (default: <src-dir>/bootstrap.toml)
-  --stage <n>             x.py stage to build with (default: 1)
+  --stage <n>             x.py stage to build with (default: 2)
   --git-depth <n>         Git clone/fetch depth (default: 1). Use 0 for full history.
   --full                  Alias for --git-depth 0
 

@@ -65,7 +65,8 @@ docker run --rm -it \
     done
 
     # Host tools only need to be built once
-    ./scripts/build_coverage_tools.sh --sha "$SHA" --host x86_64-unknown-linux-gnu --build-dir /work/.cache/ferrocene-src-ubuntu20-prof/build
+    ./scripts/build_coverage_tools.sh --sha "$SHA" --host x86_64-unknown-linux-gnu \
+      --build-dir /work/.cache/ferrocene-src-ubuntu20-prof/build --stage 2
   '
 ```
 
