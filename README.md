@@ -37,8 +37,9 @@ Install step note: the script sets `DESTDIR=out/ferrocene/install` when running 
 - Toolchains are rebuilt on Ferrocene’s Ubuntu 20.04 CI image (baseline glibc); see `ferrocene/ci/docker-images/ubuntu-20/Dockerfile` in the upstream Ferrocene repo.
 - Profiling is enabled via `config.profiler.toml` to include `libprofiler_builtins` in the sysroot.
 - QNX targets are currently built without profiling due to compiler-rt profiler runtime issues; use `config.toml` for QNX until that is fixed.
-- Coverage helpers (`symbol-report`, `blanket`) are built via `scripts/build_coverage_tools.sh`; a runnable demo is in `examples/coverage-demo/`.
+- Coverage helpers are built via `scripts/build_coverage_tools.sh`; the resulting `coverage-tools-<sha>-<host>.tar.gz` archive contains `symbol-report`, `blanket`, `llvm-cov`, `llvm-profdata`, and `llvm-cxxfilt` when available.
 - Note: `blanket` is a bootstrap tool and is only built in stage1; when using `--stage 2` to match `symbol-report` with the stage2 toolchain, the script will fall back to the stage1 `blanket`.
+- Coverage tools are host-executed binaries, so build them once per runner triple (`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`), not once per Rust target triple.
 
 ### Build commands (per-target archives)
 Build Linux + Ferrocene subset targets with profiling enabled (produces one tarball per target under `out/ferrocene-ubuntu20-prof/`):
@@ -64,13 +65,14 @@ docker run --rm -it \
       ./scripts/build_ferrocene.sh --sha "$SHA" --target "$target" --exec x86_64-unknown-linux-gnu
     done
 
-    # Host tools only need to be built once
+    # Host coverage tools only need to be built once per runner triple.
     ./scripts/build_coverage_tools.sh --sha "$SHA" --host x86_64-unknown-linux-gnu \
       --build-dir /work/.cache/ferrocene-src-ubuntu20-prof/build --stage 2
   '
 ```
 
 That will emit four separate archives under `out/ferrocene-ubuntu20-prof/`, each named `ferrocene-<sha>-<target>.tar.gz`.
+The coverage-tools archive and matching `.sha256` companion file are written under `out/ferrocene-ubuntu20-prof/tools/`.
 
 ### Ubuntu 24 variant
 Ferrocene also ships `ferrocene/ci/docker-images/ubuntu-24/Dockerfile`. Unlike the Ubuntu 20 image, the upstream Ubuntu 24 image does not install the AArch64 GNU cross toolchain, so Linux + subset builds that include `aarch64-*` targets need a few extra packages in the container.
@@ -112,7 +114,7 @@ docker run --rm -it \
   '
 ```
 
-If you only need x86_64 outputs, drop the `aarch64-*` targets and the extra AArch64 cross packages. Coverage tools and `rust-src` can be rebuilt the same way as above, just switching to `ferrocene-ubuntu24` and the `ubuntu24` cache/output directories. For QNX, reuse the QNX recipe below with `ferrocene-ubuntu24`, `FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu24-qnx`, `FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu24-qnx`, and `pkg-config`; the Ubuntu 24 image already includes `libssl-dev`.
+If you only need x86_64 outputs, drop the `aarch64-*` targets and the extra AArch64 cross packages. Coverage tools and `rust-src` can be rebuilt the same way as above, just switching to `ferrocene-ubuntu24` and the `ubuntu24` cache/output directories. For QNX, reuse the QNX recipe below with `ferrocene-ubuntu24`, `FERROCENE_SRC_DIR=/work/.cache/ferrocene-src-ubuntu24-qnx`, `FERROCENE_OUT_DIR=/work/out/ferrocene-ubuntu24-qnx`, and `pkg-config`; the Ubuntu 24 image already includes `libssl-dev`. QNX toolchains still consume a Linux-host coverage-tools archive because `llvm-cov` and `llvm-profdata` run on the reporting machine, not on the QNX target.
 
 If you want `symbol-report` to match the stage2 toolchain, build the coverage tools at stage2 (the script will reuse the stage1 `blanket`):
 ```bash
@@ -137,7 +139,7 @@ docker run --rm -it \
       ./scripts/build_ferrocene.sh --sha "$SHA" --target "$target" --exec x86_64-unknown-linux-gnu
     done
 
-    # Host tools only need to be built once
+    # Host coverage tools only need to be built once per runner triple.
     ./scripts/build_coverage_tools.sh --sha "$SHA" --host x86_64-unknown-linux-gnu \
       --build-dir /work/.cache/ferrocene-src-ubuntu20-prof/build --stage 2
   '

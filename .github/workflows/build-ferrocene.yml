@@ -97,23 +97,9 @@ jobs:
             echo "QNX_SHARED_LICENSE_FILE=$QNX_LICENSE_DIR/licenses"
           } >> "$GITHUB_ENV"
 
-      - name: Generate config for target
-        run: |
-          cat > config.toml <<'EOF'
-          change-id = 999999
-          [build]
-          host = ["x86_64-unknown-linux-gnu"]
-          target = ["${{ matrix.triple }}"]
-          extended = true
-
-          [llvm]
-          download-ci-llvm = false
-          EOF
-          cat config.toml
-
       - name: Build Ferrocene for target
         env:
-          FERROCENE_BOOTSTRAP_TOML: config.toml
+          FERROCENE_BOOTSTRAP_TOML: ${{ matrix.needs_qnx && 'config.toml' || 'config.profiler.toml' }}
         run: |
           set -euo pipefail
           ./scripts/build_ferrocene.sh \
@@ -125,5 +111,57 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ferrocene-${{ matrix.name }}-${{ inputs.ferrocene_sha }}
-          path: out/ferrocene/*.tar.gz
+          path: |
+            out/ferrocene/*.tar.gz
+            out/ferrocene/*.tar.gz.sha256
+          if-no-files-found: error
+
+  coverage-tools:
+    runs-on: ${{ matrix.runs_on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            host: x86_64-unknown-linux-gnu
+            runs_on: ubuntu-latest
+          - name: linux-aarch64
+            host: aarch64-unknown-linux-gnu
+            runs_on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install aarch64 cross compiler (Linux host tools)
+        if: matrix.host == 'aarch64-unknown-linux-gnu'
+        run: |
+          set -euo pipefail
+          if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          fi
+
+      - name: Install uv (Ferrocene bootstrap dependency)
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build coverage-tools archive
+        env:
+          FERROCENE_BOOTSTRAP_TOML: config.profiler.toml
+        run: |
+          set -euo pipefail
+          ./scripts/build_coverage_tools.sh \
+            --sha "${{ inputs.ferrocene_sha }}" \
+            --host "${{ matrix.host }}" \
+            --stage 2
+
+      - name: Upload coverage-tools archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-tools-${{ matrix.name }}-${{ inputs.ferrocene_sha }}
+          path: |
+            out/ferrocene/tools/coverage-tools-*.tar.gz
+            out/ferrocene/tools/coverage-tools-*.tar.gz.sha256
           if-no-files-found: error
