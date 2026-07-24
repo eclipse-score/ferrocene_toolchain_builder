@@ -13,9 +13,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # *******************************************************************************
 #
-# Build the Ferrocene coverage helpers (symbol-report and blanket) for a given
-# host triple. These tools are used to generate coverage reports for the
-# certified subset.
+# Build the Ferrocene coverage helpers for a given host triple. This packages
+# the Ferrocene-specific tools (symbol-report and blanket) together with the
+# LLVM coverage tools from the same build tree (llvm-cov, llvm-profdata, and
+# optionally llvm-cxxfilt).
 #
 # Example:
 #   ./scripts/build_coverage_tools.sh --sha <commit> --host x86_64-unknown-linux-gnu
@@ -36,7 +37,7 @@ STAGE="${FERROCENE_STAGE:-2}"
 
 usage() {
   cat <<'EOF'
-Build Ferrocene's coverage tools (symbol-report and blanket) for a host triple.
+Build Ferrocene's coverage tools for a host triple.
 
 Required:
   --sha <commit>          Commit or tag to check out (FERROCENE_SHA)
@@ -100,6 +101,29 @@ for cmd in git python3; do
   fi
 done
 
+X_ENV=()
+case "${HOST_TRIPLE}" in
+  aarch64-unknown-linux-gnu)
+    if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
+      cat <<'EOF' >&2
+ERROR: host aarch64-unknown-linux-gnu requested but aarch64-linux-gnu-gcc is missing.
+On Debian/Ubuntu, install it with: sudo apt-get install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+EOF
+      exit 1
+    fi
+    X_ENV+=("CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc")
+    X_ENV+=("CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++")
+    X_ENV+=("AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar")
+    ;;
+  *qnx*)
+    cat <<EOF >&2
+ERROR: coverage tools are host-executed binaries. Building a ${HOST_TRIPLE} coverage-tools archive is not supported here.
+Build a Linux host archive instead (for example x86_64-unknown-linux-gnu or aarch64-unknown-linux-gnu).
+EOF
+    exit 1
+    ;;
+esac
+
 mkdir -p "${SRC_DIR}" "${OUT_DIR}"
 
 BUILD_DIR_ABS=$(python3 - <<'PY' "$BUILD_DIR"
@@ -156,16 +180,8 @@ EOF
   echo "Wrote ${BOOTSTRAP_TOML} (download-ci-llvm/gcc/rustc disabled)"
 fi
 
-J_FLAG=()
-if [[ -n "${JOBS}" ]]; then
-  J_FLAG=(-j "${JOBS}")
-fi
-
-python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" --config "${BOOTSTRAP_TOML}" --build-dir "${BUILD_DIR_ABS}" \
-  build --stage "${STAGE}" --host "${HOST_TRIPLE}" --target "${HOST_TRIPLE}" \
-  ferrocene/tools/symbol-report ferrocene/tools/blanket
-
 TOOLS_DIR="${BUILD_DIR_ABS}/${HOST_TRIPLE}/stage${STAGE}-tools-bin"
+LLVM_TOOLS_DIR="${BUILD_DIR_ABS}/${HOST_TRIPLE}/llvm/bin"
 EXT=""
 if [[ "${HOST_TRIPLE}" == *"windows"* ]]; then
   EXT=".exe"
@@ -182,7 +198,72 @@ if [[ "${STAGE}" -gt 1 ]]; then
 fi
 BLANKET_BIN="${BLANKET_TOOLS_DIR}/blanket${EXT}"
 
-for bin in "${SYMBOL_BIN}" "${BLANKET_BIN}"; do
+resolve_llvm_binary() {
+  local tool_name="$1"
+  local candidate=""
+
+  for candidate in \
+    "${LLVM_TOOLS_DIR}/${tool_name}${EXT}" \
+    "${BUILD_DIR_ABS}/llvm/bin/${tool_name}${EXT}"
+  do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+collect_package_bins() {
+  local llvm_cov_bin=""
+  local llvm_profdata_bin=""
+  local llvm_cxxfilt_bin=""
+
+  if [[ ! -x "${SYMBOL_BIN}" || ! -x "${BLANKET_BIN}" ]]; then
+    return 1
+  fi
+
+  llvm_cov_bin="$(resolve_llvm_binary llvm-cov)" || return 1
+  llvm_profdata_bin="$(resolve_llvm_binary llvm-profdata)" || return 1
+  llvm_cxxfilt_bin="$(resolve_llvm_binary llvm-cxxfilt 2>/dev/null || true)"
+
+  PACKAGE_BINS=(
+    "${SYMBOL_BIN}"
+    "${BLANKET_BIN}"
+    "${llvm_cov_bin}"
+    "${llvm_profdata_bin}"
+  )
+  if [[ -n "${llvm_cxxfilt_bin}" ]]; then
+    PACKAGE_BINS+=("${llvm_cxxfilt_bin}")
+  fi
+
+  return 0
+}
+
+J_FLAG=()
+if [[ -n "${JOBS}" ]]; then
+  J_FLAG=(-j "${JOBS}")
+fi
+
+if collect_package_bins; then
+  echo "Reusing cached coverage-tool build outputs from ${BUILD_DIR_ABS}."
+else
+  env "${X_ENV[@]}" python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" --config "${BOOTSTRAP_TOML}" --build-dir "${BUILD_DIR_ABS}" \
+    build --stage "${STAGE}" --host "${HOST_TRIPLE}" --target "${HOST_TRIPLE}" \
+    ferrocene/tools/symbol-report ferrocene/tools/blanket
+
+  if ! collect_package_bins; then
+    echo "ERROR: expected coverage tools were not produced in ${BUILD_DIR_ABS}." >&2
+    exit 1
+  fi
+fi
+
+if ! resolve_llvm_binary llvm-cxxfilt >/dev/null 2>&1; then
+  echo "NOTE: llvm-cxxfilt was not found in the build output; packaging coverage tools without it." >&2
+fi
+
+for bin in "${PACKAGE_BINS[@]}"; do
   if [[ ! -x "${bin}" ]]; then
     echo "ERROR: expected tool at ${bin}, but it was not produced." >&2
     exit 1
@@ -191,16 +272,27 @@ done
 
 DEST_DIR="${OUT_DIR}/${FERROCENE_SHA}/${HOST_TRIPLE}"
 mkdir -p "${DEST_DIR}"
-cp "${SYMBOL_BIN}" "${BLANKET_BIN}" "${DEST_DIR}/"
+cp "${PACKAGE_BINS[@]}" "${DEST_DIR}/"
+
+PACKAGE_NAMES=()
+for bin in "${PACKAGE_BINS[@]}"; do
+  PACKAGE_NAMES+=("$(basename "${bin}")")
+done
 
 pushd "${DEST_DIR}" >/dev/null
-sha256sum "$(basename "${SYMBOL_BIN}")" "$(basename "${BLANKET_BIN}")" > SHA256SUMS
+sha256sum "${PACKAGE_NAMES[@]}" > SHA256SUMS
 popd >/dev/null
+
+ARCHIVE_NAME="coverage-tools-${FERROCENE_SHA}-${HOST_TRIPLE}.tar.gz"
+ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}"
+tar -C "${OUT_DIR}" -czf "${ARCHIVE_PATH}" "${FERROCENE_SHA}/${HOST_TRIPLE}"
+sha256sum "${ARCHIVE_PATH}" > "${ARCHIVE_PATH}.sha256"
 
 cat <<EOF
 
 Built coverage tools for ${FERROCENE_SHA} (${HOST_TRIPLE}) at ${DEST_DIR}:
-  - ${DEST_DIR}/symbol-report${EXT}
-  - ${DEST_DIR}/blanket${EXT}
+$(for tool_name in "${PACKAGE_NAMES[@]}"; do printf '  - %s/%s\n' "${DEST_DIR}" "${tool_name}"; done)
 Checksums stored in ${DEST_DIR}/SHA256SUMS
+Archive written to ${ARCHIVE_PATH}
+Archive SHA256 stored in ${ARCHIVE_PATH}.sha256
 EOF
