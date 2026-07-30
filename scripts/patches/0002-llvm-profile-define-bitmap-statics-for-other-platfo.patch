@@ -1,0 +1,34 @@
+Subject: [PATCH] llvm-profile: define bitmap statics for "Other" platforms
+
+The compiler-rt profile runtime in this LLVM tree carries the MC/DC-era
+bitmap accessors in InstrProfilingPlatformOther.c
+(__llvm_profile_begin_bitmap / __llvm_profile_end_bitmap) but not the
+BitmapFirst/BitmapLast statics they return, so platforms using the
+generic fallback (e.g. QNX) fail to compile the profiler runtime:
+
+  InstrProfilingPlatformOther.c: 'BitmapFirst' undeclared
+  InstrProfilingPlatformOther.c: 'BitmapLast' undeclared
+
+Upstream llvm-project defines both statics in this file (initialized to
+NULL and never updated by __llvm_profile_register_function - the bitmap
+region stays empty on registration-based platforms). This backports
+exactly that: profile counters (line/function/branch coverage) work,
+MC/DC bitmaps are a no-op, matching upstream behavior.
+
+Replaces the stale hand-written patches/llvm-qnx-profiler-bitmap.patch,
+which additionally implemented bitmap bookkeeping in the registration
+function (beyond upstream, only needed for MC/DC on QNX) and was not in
+the scripted patch path (scripts/patches/) nor appliable with git apply.
+
+---
+--- a/src/llvm-project/compiler-rt/lib/profile/InstrProfilingPlatformOther.c
++++ b/src/llvm-project/compiler-rt/lib/profile/InstrProfilingPlatformOther.c
+@@ -27,6 +27,8 @@ static const char *VNamesFirst = NULL;
+ static const char *VNamesLast = NULL;
+ static char *CountersFirst = NULL;
+ static char *CountersLast = NULL;
++static char *BitmapFirst = NULL;
++static char *BitmapLast = NULL;
+ 
+ static const void *getMinAddr(const void *A1, const void *A2) {
+   return A1 < A2 ? A1 : A2;

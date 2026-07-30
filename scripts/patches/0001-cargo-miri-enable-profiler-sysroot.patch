@@ -1,0 +1,18 @@
+diff --git a/src/tools/miri/cargo-miri/src/setup.rs b/src/tools/miri/cargo-miri/src/setup.rs
+index c76820936..3facc9403 100644
+--- a/src/tools/miri/cargo-miri/src/setup.rs
++++ b/src/tools/miri/cargo-miri/src/setup.rs
+@@ -83,7 +83,12 @@ pub fn setup(
+         SysrootConfig::NoStd
+     } else {
+         SysrootConfig::WithStd {
+-            std_features: ["panic-unwind", "backtrace"].into_iter().map(Into::into).collect(),
++            // Keep profiler_builtins in the prebuilt Miri sysroot so
++            // coverage-instrumented crates can still link under Miri.
++            std_features: ["panic-unwind", "backtrace", "profiler"]
++                .into_iter()
++                .map(Into::into)
++                .collect(),
+         }
+     };
+     let cargo_cmd = {

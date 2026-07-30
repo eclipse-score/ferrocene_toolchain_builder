@@ -22,51 +22,31 @@ on:
         default: "779fbed05ae9e9fe2a04137929d99cc9b3d516fd"
 
 jobs:
-  build:
+  release-artifacts:
     runs-on: ${{ vars.REPO_RUNNER_LABELS && fromJSON(vars.REPO_RUNNER_LABELS) || 'ubuntu-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            triple: x86_64-unknown-linux-gnu
-            needs_qnx: false
-          - name: linux-aarch64
-            triple: aarch64-unknown-linux-gnu
-            needs_qnx: false
-          - name: qnx8-aarch64
-            triple: aarch64-unknown-nto-qnx800
-            needs_qnx: true
-          - name: qnx8-x86_64
-            triple: x86_64-pc-nto-qnx800
-            needs_qnx: true
-          - name: subset-aarch64
-            triple: aarch64-unknown-ferrocene.subset
-            needs_qnx: false
-          - name: subset-x86_64
-            triple: x86_64-unknown-ferrocene.subset
-            needs_qnx: false
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install aarch64 cross compiler (Linux)
-        if: startsWith(matrix.triple, 'aarch64-') && !contains(matrix.triple, 'qnx')
+      - name: Install build dependencies
         run: |
           set -euo pipefail
-          if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config \
+            libssl-dev \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            binutils-aarch64-linux-gnu \
+            libc6-dev-arm64-cross
 
       - name: Install uv (Ferrocene bootstrap dependency)
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Download QNX SDP (if needed)
-        if: matrix.needs_qnx == true
+      - name: Download QNX SDP
         env:
           SCORE_QNX_USER: ${{ secrets.SCORE_QNX_USER }}
           SCORE_QNX_PASSWORD: ${{ secrets.SCORE_QNX_PASSWORD }}
@@ -84,8 +64,7 @@ jobs:
             echo "PATH=$QNX_HOST/usr/bin:$PATH"
           } >> "$GITHUB_ENV"
 
-      - name: Setup QNX license (if needed)
-        if: matrix.needs_qnx == true
+      - name: Setup QNX license
         env:
           SCORE_QNX_LICENSE: ${{ secrets.SCORE_QNX_LICENSE }}
         run: |
@@ -97,71 +76,17 @@ jobs:
             echo "QNX_SHARED_LICENSE_FILE=$QNX_LICENSE_DIR/licenses"
           } >> "$GITHUB_ENV"
 
-      - name: Build Ferrocene for target
-        env:
-          FERROCENE_BOOTSTRAP_TOML: ${{ matrix.needs_qnx && 'config.toml' || 'config.profiler.toml' }}
-        run: |
-          set -euo pipefail
-          ./scripts/build_ferrocene.sh \
-            --sha "${{ inputs.ferrocene_sha }}" \
-            --target "${{ matrix.triple }}" \
-            --exec x86_64-unknown-linux-gnu
-
-      - name: Upload archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ferrocene-${{ matrix.name }}-${{ inputs.ferrocene_sha }}
-          path: |
-            out/ferrocene/*.tar.gz
-            out/ferrocene/*.tar.gz.sha256
-          if-no-files-found: error
-
-  coverage-tools:
-    runs-on: ${{ matrix.runs_on }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: linux-x86_64
-            host: x86_64-unknown-linux-gnu
-            runs_on: ubuntu-latest
-          - name: linux-aarch64
-            host: aarch64-unknown-linux-gnu
-            runs_on: ubuntu-24.04-arm
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install aarch64 cross compiler (Linux host tools)
-        if: matrix.host == 'aarch64-unknown-linux-gnu'
-        run: |
-          set -euo pipefail
-          if ! command -v aarch64-linux-gnu-gcc >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          fi
-
-      - name: Install uv (Ferrocene bootstrap dependency)
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Build coverage-tools archive
+      - name: Build full release payload
         env:
           FERROCENE_BOOTSTRAP_TOML: config.profiler.toml
         run: |
           set -euo pipefail
-          ./scripts/build_coverage_tools.sh \
-            --sha "${{ inputs.ferrocene_sha }}" \
-            --host "${{ matrix.host }}" \
-            --stage 2
+          ./scripts/build_release_assets.sh --sha "${{ inputs.ferrocene_sha }}"
 
-      - name: Upload coverage-tools archive
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-tools-${{ matrix.name }}-${{ inputs.ferrocene_sha }}
+          name: ferrocene-release-${{ inputs.ferrocene_sha }}
           path: |
-            out/ferrocene/tools/coverage-tools-*.tar.gz
-            out/ferrocene/tools/coverage-tools-*.tar.gz.sha256
+            out/releases/${{ inputs.ferrocene_sha }}/**/*
           if-no-files-found: error

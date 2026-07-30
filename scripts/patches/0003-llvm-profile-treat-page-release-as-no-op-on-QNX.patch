@@ -1,0 +1,31 @@
+Subject: [PATCH] llvm-profile: treat page release as a no-op on QNX
+
+lprofReleaseMemoryPagesToOS() uses Linux-style madvise(MADV_DONTNEED),
+which QNX does not provide (no madvise declaration; only the advisory
+posix_madvise/POSIX_MADV_DONTNEED, which does not discard pages):
+
+  InstrProfilingUtil.c:499: 'madvise' implicitly declared
+  InstrProfilingUtil.c: 'MADV_DONTNEED' undeclared
+
+The function is a pure RSS optimization: after continuous mode maps the
+counters into the profile file, the original counter/bitmap pages are
+released. Callers (InstrProfilingFile.c, InstrProfilingPlatformFuchsia.c)
+ignore the result, and upstream already compiles it away on platforms
+without madvise (VE, WASI). Extend that guard to QNX (__QNXNTO__).
+
+---
+--- a/src/llvm-project/compiler-rt/lib/profile/InstrProfilingUtil.c
++++ b/src/llvm-project/compiler-rt/lib/profile/InstrProfilingUtil.c
+@@ -483,8 +483,10 @@ COMPILER_RT_VISIBILITY void lprofRestoreSigKill(void) {
+ 
+ COMPILER_RT_VISIBILITY int lprofReleaseMemoryPagesToOS(uintptr_t Begin,
+                                                        uintptr_t End) {
+-#if defined(__ve__) || defined(__wasi__)
+-  // VE and WASI doesn't support madvise.
++#if defined(__ve__) || defined(__wasi__) || defined(__QNXNTO__)
++  // VE and WASI don't support madvise. QNX has no Linux-style
++  // madvise(MADV_DONTNEED); releasing pages is only an RSS optimization,
++  // so treat it as a no-op like on VE/WASI.
+   return 0;
+ #else
+   size_t PageSize = getpagesize();

@@ -33,13 +33,26 @@ Git checkout uses a shallow clone by default (`--git-depth 1` / `FERROCENE_GIT_D
 
 Install step note: the script sets `DESTDIR=out/ferrocene/install` when running `x.py install` so no privileged paths are touched; the installed tree under that DESTDIR is what gets tarred.
 
+## Release path (1.3.1 and newer)
+- Use `scripts/build_release_assets.sh` for release builds. It drives the full payload from one shared source checkout and one shared `x.py` build tree, so `symbol-report`, `blanket`, the shipped toolchains, and the prebuilt Miri sysroots all come from the same build.
+- The release path is Ubuntu 24 + `config.profiler.toml`. Do not mix Ubuntu 20 and Ubuntu 24 artifacts inside one release.
+- The repository carries a local patch for `cargo-miri` so the prebuilt Miri sysroots keep `libprofiler_builtins`; this avoids the coverage-related `E0463` failures when Miri is used under Bazel transitions.
+
+Example:
+```bash
+./scripts/build_release_assets.sh --sha <commit>
+```
+
 ## Build environment and coverage
-- Toolchains are rebuilt on Ferrocene’s Ubuntu 20.04 CI image (baseline glibc); see `ferrocene/ci/docker-images/ubuntu-20/Dockerfile` in the upstream Ferrocene repo.
+- Release builds are done on Ferrocene’s Ubuntu 24 image and keep one shared build tree for toolchains, coverage-tools, and Miri sysroots.
 - Profiling is enabled via `config.profiler.toml` to include `libprofiler_builtins` in the sysroot.
-- QNX targets are currently built without profiling due to compiler-rt profiler runtime issues; use `config.toml` for QNX until that is fixed.
+- QNX toolchains are built with the same profiler-enabled configuration as the Linux toolchains so the shipped archives keep `libprofiler_builtins`.
 - Coverage helpers are built via `scripts/build_coverage_tools.sh`; the resulting `coverage-tools-<sha>-<host>.tar.gz` archive contains `symbol-report`, `blanket`, `llvm-cov`, `llvm-profdata`, and `llvm-cxxfilt` when available.
 - Note: `blanket` is a bootstrap tool and is only built in stage1; when using `--stage 2` to match `symbol-report` with the stage2 toolchain, the script will fall back to the stage1 `blanket`.
 - Coverage tools are host-executed binaries, so build them once per runner triple (`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`), not once per Rust target triple.
+- `scripts/build_coverage_tools.sh` can validate the packaged Rust tools against a just-built toolchain archive via `--toolchain-archive`, which catches mixed-build ABI mismatches before release.
+
+The remaining per-target Docker examples are useful for ad-hoc local rebuilds, but they are not the supported release path anymore.
 
 ### Build commands (per-target archives)
 Build Linux + Ferrocene subset targets with profiling enabled (produces one tarball per target under `out/ferrocene-ubuntu20-prof/`):

@@ -22,6 +22,9 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/ferrocene_source.sh"
+
 REPO_URL=${FERROCENE_REPO_URL:-"https://github.com/ferrocene/ferrocene.git"}
 SRC_DIR=${FERROCENE_SRC_DIR:-".cache/ferrocene-src"}
 OUT_DIR=${FERROCENE_OUT_DIR:-"out/ferrocene"}
@@ -79,27 +82,7 @@ for cmd in git tar sha256sum; do
 done
 
 mkdir -p "${SRC_DIR}" "${OUT_DIR}"
-
-if [[ ! -d "${SRC_DIR}/.git" ]]; then
-  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-    git clone --no-checkout --depth "${GIT_DEPTH}" "${REPO_URL}" "${SRC_DIR}"
-  else
-    git clone "${REPO_URL}" "${SRC_DIR}"
-  fi
-else
-  git -C "${SRC_DIR}" remote set-url origin "${REPO_URL}"
-fi
-
-if git -C "${SRC_DIR}" rev-parse --verify "${FERROCENE_SHA}^{commit}" >/dev/null 2>&1; then
-  echo "Found ${FERROCENE_SHA} locally; skipping fetch."
-else
-  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-    git -C "${SRC_DIR}" fetch --depth "${GIT_DEPTH}" origin "${FERROCENE_SHA}"
-  else
-    git -C "${SRC_DIR}" fetch --all
-  fi
-fi
-git -C "${SRC_DIR}" checkout --detach "${FERROCENE_SHA}"
+prepare_ferrocene_checkout "${REPO_URL}" "${SRC_DIR}" "${FERROCENE_SHA}" "${GIT_DEPTH}"
 
 ARCHIVE_NAME="rust-src-${FERROCENE_SHA}.tar.gz"
 ARCHIVE_PATH="${OUT_DIR}/${ARCHIVE_NAME}"
@@ -114,6 +97,7 @@ tar -C "${SRC_DIR}" \
   --exclude='library/stdarch/crates/intrinsic-test' \
   -czf "${ARCHIVE_PATH}" \
   library \
+  src/llvm-project/compiler-rt \
   src/llvm-project/libunwind \
   ferrocene/library/libc \
   ferrocene/library/backtrace-rs
@@ -127,6 +111,7 @@ SHA256 file  : ${SHA_PATH}
 
 This archive unpacks to a source tree root containing:
   - library/
+  - src/llvm-project/compiler-rt/
   - src/llvm-project/libunwind/
   - ferrocene/library/libc/
   - ferrocene/library/backtrace-rs/
