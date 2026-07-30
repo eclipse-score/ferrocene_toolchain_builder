@@ -103,6 +103,40 @@ resolve_rust_src_dir() {
   printf '%s\n' "$library_dir"
 }
 
+ensure_profiler_enabled_rust_src() {
+  local rust_src_dir="$1"
+  local rust_src_root
+  local compiler_rt_dir
+  local std_manifest
+
+  rust_src_root="$(dirname "$rust_src_dir")"
+  compiler_rt_dir="$rust_src_root/src/llvm-project/compiler-rt/lib/profile"
+  [[ -d "$compiler_rt_dir" ]] || die \
+    "rust-src is missing src/llvm-project/compiler-rt; rebuild the rust-src archive with compiler-rt included."
+
+  std_manifest="$rust_src_dir/std/Cargo.toml"
+  [[ -f "$std_manifest" ]] || die "missing std manifest in rust-src: $std_manifest"
+
+  if grep -Fq 'profiler = ["core/ferrocene_inject_profiler_builtins"]' "$std_manifest"; then
+    return
+  fi
+
+  python3 - "$std_manifest" <<'PY'
+from pathlib import Path
+import sys
+
+manifest = Path(sys.argv[1])
+text = manifest.read_text()
+needle = 'panic-unwind = ["dep:panic_unwind"]\n'
+shim = needle + 'profiler = ["core/ferrocene_inject_profiler_builtins"]\n'
+
+if needle not in text:
+    raise SystemExit(f"could not inject profiler feature shim into {manifest}")
+
+manifest.write_text(text.replace(needle, shim, 1))
+PY
+}
+
 sha=""
 host_toolchain=""
 rust_src=""
@@ -178,6 +212,7 @@ trap 'rm -rf "$tmp_root"' EXIT
 
 toolchain_root="$(resolve_toolchain_root "$host_toolchain" "$tmp_root/toolchain")"
 rust_src_dir="$(resolve_rust_src_dir "$rust_src" "$tmp_root/rust-src")"
+ensure_profiler_enabled_rust_src "$rust_src_dir"
 
 orig_home="${HOME:-$PWD}"
 if [[ -z "$cargo_home" ]]; then
@@ -208,6 +243,10 @@ for target in "${targets[@]}"; do
   echo "==> building Miri sysroot for $target"
   export MIRI_SYSROOT="$sysroot_dir"
   "$toolchain_root/bin/cargo-miri" miri setup --target "$target"
+
+  if ! find "$sysroot_dir" -type f -name 'libprofiler_builtins-*.rlib' -print -quit | grep -q .; then
+    die "Miri sysroot for ${target} is missing libprofiler_builtins; rebuild the host toolchain with the profiler-enabled cargo-miri patch."
+  fi
 
   cat > "$sysroot_dir/BUILD-INFO.txt" <<INFO
 sha=$sha

@@ -20,9 +20,13 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/ferrocene_source.sh"
+
 REPO_URL=${FERROCENE_REPO_URL:-"https://github.com/ferrocene/ferrocene.git"}
 SRC_DIR=${FERROCENE_SRC_DIR:-".cache/ferrocene-src"}
 OUT_DIR=${FERROCENE_OUT_DIR:-"out/ferrocene"}
+BUILD_DIR=${FERROCENE_BUILD_DIR:-""}
 
 TARGET_TRIPLE="x86_64-unknown-linux-gnu"
 EXEC_TRIPLE="x86_64-unknown-linux-gnu"
@@ -46,6 +50,7 @@ Optional:
   --repo-url <url>        Git repo to clone (default: https://github.com/ferrocene/ferrocene.git)
   --src-dir <path>        Cache directory for the git checkout (default: .cache/ferrocene-src)
   --out-dir <path>        Output directory for artifacts (default: out/ferrocene)
+  --build-dir <path>      x.py build directory (default: <src-dir>/build)
   --jobs <n>              Parallel jobs passed to x.py (-j)
   --bootstrap <path>      Path to write bootstrap.toml (default: <src-dir>/bootstrap.toml)
   --dist-packages "<pkgs>" Space-separated list of dist/install packages (default: "rustc rust-std cargo rustfmt clippy miri")
@@ -55,7 +60,8 @@ Optional:
 
 Environment overrides:
   FERROCENE_REPO_URL, FERROCENE_SRC_DIR, FERROCENE_OUT_DIR, FERROCENE_SHA, FERROCENE_JOBS,
-  FERROCENE_BOOTSTRAP_TOML, FERROCENE_DIST_PACKAGES, FERROCENE_INSTALL_PACKAGES, FERROCENE_GIT_DEPTH
+  FERROCENE_BOOTSTRAP_TOML, FERROCENE_BUILD_DIR, FERROCENE_DIST_PACKAGES,
+  FERROCENE_INSTALL_PACKAGES, FERROCENE_GIT_DEPTH
 EOF
 }
 
@@ -67,6 +73,7 @@ while [[ $# -gt 0 ]]; do
     --repo-url) REPO_URL="$2"; shift 2 ;;
     --src-dir) SRC_DIR="$2"; shift 2 ;;
     --out-dir) OUT_DIR="$2"; shift 2 ;;
+    --build-dir) BUILD_DIR="$2"; shift 2 ;;
     --jobs) JOBS="$2"; shift 2 ;;
     --bootstrap) BOOTSTRAP_TOML="$2"; shift 2 ;;
     --dist-packages) DIST_PACKAGES="$2"; shift 2 ;;
@@ -89,6 +96,10 @@ if ! [[ "${GIT_DEPTH}" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+if [[ -z "${BUILD_DIR}" ]]; then
+  BUILD_DIR="${SRC_DIR}/build"
+fi
+
 for cmd in git python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
@@ -106,6 +117,12 @@ EOF
 fi
 
 mkdir -p "${SRC_DIR}" "${OUT_DIR}"
+BUILD_DIR_ABS=$(python3 - <<'PY' "$BUILD_DIR"
+import os, sys
+print(os.path.abspath(sys.argv[1]))
+PY
+)
+mkdir -p "${BUILD_DIR_ABS}"
 
 IFS=',' read -r -a TARGETS_ARR <<< "${TARGET_TRIPLE}"
 NEEDS_QNX=0
@@ -202,22 +219,7 @@ if [[ "${NEEDS_LINUX_AARCH64}" -eq 1 ]]; then
   X_ENV+=("AR_aarch64_unknown_none=aarch64-linux-gnu-ar")
 fi
 
-if [[ ! -d "${SRC_DIR}/.git" ]]; then
-  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-    git clone --no-checkout --depth "${GIT_DEPTH}" "${REPO_URL}" "${SRC_DIR}"
-  else
-    git clone "${REPO_URL}" "${SRC_DIR}"
-  fi
-else
-  git -C "${SRC_DIR}" remote set-url origin "${REPO_URL}"
-fi
-
-if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-  git -C "${SRC_DIR}" fetch --depth "${GIT_DEPTH}" origin "${FERROCENE_SHA}"
-else
-  git -C "${SRC_DIR}" fetch --all
-fi
-git -C "${SRC_DIR}" checkout --detach "${FERROCENE_SHA}"
+prepare_ferrocene_checkout "${REPO_URL}" "${SRC_DIR}" "${FERROCENE_SHA}" "${GIT_DEPTH}"
 
 BOOTSTRAP_TOML="${BOOTSTRAP_TOML:-${SRC_DIR}/bootstrap.toml}"
 if [[ -f "${BOOTSTRAP_TOML}" ]]; then
@@ -263,9 +265,9 @@ CONFIG_FLAG=(--config "${BOOTSTRAP_TOML}")
 DIST_ARGS=(${DIST_PACKAGES})
 INSTALL_ARGS=(${INSTALL_PACKAGES})
 
-env "${X_ENV[@]}" python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" "${CONFIG_FLAG[@]}" dist --host "${EXEC_TRIPLE}" --target "${TARGET_TRIPLE}" "${DIST_ARGS[@]}"
+env "${X_ENV[@]}" python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" "${CONFIG_FLAG[@]}" --build-dir "${BUILD_DIR_ABS}" dist --host "${EXEC_TRIPLE}" --target "${TARGET_TRIPLE}" "${DIST_ARGS[@]}"
 rm -rf "${OUT_DIR}/install"
-env "${X_ENV[@]}" DESTDIR="${OUT_DIR}/install" python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" "${CONFIG_FLAG[@]}" install --host "${EXEC_TRIPLE}" --target "${TARGET_TRIPLE}" "${INSTALL_ARGS[@]}"
+env "${X_ENV[@]}" DESTDIR="${OUT_DIR}/install" python3 "${SRC_DIR}/x.py" "${J_FLAG[@]}" "${CONFIG_FLAG[@]}" --build-dir "${BUILD_DIR_ABS}" install --host "${EXEC_TRIPLE}" --target "${TARGET_TRIPLE}" "${INSTALL_ARGS[@]}"
 
 if [[ "${TARGET_TRIPLE}" == *","* ]]; then
   TARGETS_HASH="$(printf %s "${TARGET_TRIPLE}" | sha256sum | cut -c1-8)"

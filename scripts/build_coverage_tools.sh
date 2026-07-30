@@ -23,10 +23,13 @@
 #
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/ferrocene_source.sh"
+
 REPO_URL=${FERROCENE_REPO_URL:-"https://github.com/ferrocene/ferrocene.git"}
 SRC_DIR=${FERROCENE_SRC_DIR:-".cache/ferrocene-src"}
 OUT_DIR=${FERROCENE_TOOLS_OUT_DIR:-"out/ferrocene/tools"}
-BUILD_DIR=${FERROCENE_BUILD_DIR:-"build"}
+BUILD_DIR=${FERROCENE_BUILD_DIR:-""}
 
 HOST_TRIPLE="x86_64-unknown-linux-gnu"
 FERROCENE_SHA="${FERROCENE_SHA:-}"
@@ -34,6 +37,7 @@ JOBS="${FERROCENE_JOBS:-}"
 BOOTSTRAP_TOML="${FERROCENE_BOOTSTRAP_TOML:-}"
 GIT_DEPTH="${FERROCENE_GIT_DEPTH:-1}"
 STAGE="${FERROCENE_STAGE:-2}"
+TOOLCHAIN_REFERENCE=""
 
 usage() {
   cat <<'EOF'
@@ -47,10 +51,12 @@ Optional:
   --repo-url <url>        Git repo to clone (default: https://github.com/ferrocene/ferrocene.git)
   --src-dir <path>        Cache directory for the git checkout (default: .cache/ferrocene-src)
   --out-dir <path>        Where to copy the built binaries (default: out/ferrocene/tools)
-  --build-dir <path>      x.py build directory (default: ./build relative to CWD)
+  --build-dir <path>      x.py build directory (default: <src-dir>/build)
   --jobs <n>              Parallel jobs passed to x.py (-j)
   --bootstrap <path>      Path to bootstrap/config toml (default: <src-dir>/bootstrap.toml)
   --stage <n>             x.py stage to build with (default: 2)
+  --toolchain-archive <path>  Validate Rust shared-library ABI against this installed toolchain archive
+  --toolchain-root <path>     Validate Rust shared-library ABI against this extracted toolchain root
   --git-depth <n>         Git clone/fetch depth (default: 1). Use 0 for full history.
   --full                  Alias for --git-depth 0
 
@@ -71,6 +77,8 @@ while [[ $# -gt 0 ]]; do
     --jobs) JOBS="$2"; shift 2 ;;
     --bootstrap) BOOTSTRAP_TOML="$2"; shift 2 ;;
     --stage) STAGE="$2"; shift 2 ;;
+    --toolchain-archive) TOOLCHAIN_REFERENCE="$2"; shift 2 ;;
+    --toolchain-root) TOOLCHAIN_REFERENCE="$2"; shift 2 ;;
     --git-depth) GIT_DEPTH="$2"; shift 2 ;;
     --full) GIT_DEPTH=0; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -94,12 +102,21 @@ if ! [[ "${STAGE}" =~ ^[0-9]+$ ]] || [[ "${STAGE}" -lt 1 ]]; then
   exit 1
 fi
 
+if [[ -z "${BUILD_DIR}" ]]; then
+  BUILD_DIR="${SRC_DIR}/build"
+fi
+
 for cmd in git python3; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Missing required command: $cmd" >&2
     exit 1
   fi
 done
+
+if [[ -n "${TOOLCHAIN_REFERENCE}" ]] && ! command -v readelf >/dev/null 2>&1; then
+  echo "Missing required command for ABI validation: readelf" >&2
+  exit 1
+fi
 
 X_ENV=()
 case "${HOST_TRIPLE}" in
@@ -132,27 +149,7 @@ print(os.path.abspath(sys.argv[1]))
 PY
 )
 mkdir -p "${BUILD_DIR_ABS}"
-
-if [[ ! -d "${SRC_DIR}/.git" ]]; then
-  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-    git clone --no-checkout --depth "${GIT_DEPTH}" "${REPO_URL}" "${SRC_DIR}"
-  else
-    git clone "${REPO_URL}" "${SRC_DIR}"
-  fi
-else
-  git -C "${SRC_DIR}" remote set-url origin "${REPO_URL}"
-fi
-
-if git -C "${SRC_DIR}" rev-parse --verify "${FERROCENE_SHA}^{commit}" >/dev/null 2>&1; then
-  echo "Found ${FERROCENE_SHA} locally; skipping fetch."
-else
-  if [[ "${GIT_DEPTH}" -gt 0 ]]; then
-    git -C "${SRC_DIR}" fetch --depth "${GIT_DEPTH}" origin "${FERROCENE_SHA}"
-  else
-    git -C "${SRC_DIR}" fetch --all
-  fi
-fi
-git -C "${SRC_DIR}" checkout --detach "${FERROCENE_SHA}"
+prepare_ferrocene_checkout "${REPO_URL}" "${SRC_DIR}" "${FERROCENE_SHA}" "${GIT_DEPTH}"
 
 BOOTSTRAP_TOML="${BOOTSTRAP_TOML:-${SRC_DIR}/bootstrap.toml}"
 if [[ -f "${BOOTSTRAP_TOML}" ]]; then
@@ -215,6 +212,74 @@ resolve_llvm_binary() {
   return 1
 }
 
+extract_toolchain_root() {
+  local archive_path="$1"
+  local extract_dir="$2"
+
+  mkdir -p "${extract_dir}"
+  tar -xzf "${archive_path}" -C "${extract_dir}"
+  find "${extract_dir}" -mindepth 1 -maxdepth 2 -type f -path '*/bin/rustc' -printf '%h\n' | sed 's#/bin$##' | head -n 1
+}
+
+resolve_toolchain_root() {
+  local toolchain_ref="$1"
+  local temp_dir="$2"
+
+  if [[ -d "${toolchain_ref}" ]]; then
+    printf '%s\n' "${toolchain_ref}"
+    return 0
+  fi
+
+  if [[ -f "${toolchain_ref}" ]]; then
+    extract_toolchain_root "${toolchain_ref}" "${temp_dir}"
+    return 0
+  fi
+
+  return 1
+}
+
+validate_rust_abi_match() {
+  local toolchain_ref="$1"
+  local temp_dir="$2"
+  local toolchain_root=""
+  local bin=""
+  local dep=""
+  local found_any=0
+  local missing=0
+
+  toolchain_root="$(resolve_toolchain_root "${toolchain_ref}" "${temp_dir}")" || {
+    echo "ERROR: could not resolve toolchain reference: ${toolchain_ref}" >&2
+    exit 1
+  }
+
+  for bin in "${PACKAGE_BINS[@]}"; do
+    while IFS= read -r dep; do
+      [[ -n "${dep}" ]] || continue
+      found_any=1
+      if ! find "${toolchain_root}" -type f -name "${dep}" -print -quit | grep -q .; then
+        echo "ERROR: ${bin} needs ${dep}, but ${toolchain_ref} does not ship it." >&2
+        missing=1
+      fi
+    done < <(
+      readelf -d "${bin}" 2>/dev/null \
+        | sed -n 's/.*Shared library: \[\([^]]*\)\].*/\1/p' \
+        | grep -E '^lib[^/]+-[0-9a-f]{16}\.so$' \
+        | sort -u || true
+    )
+  done
+
+  if [[ "${missing}" -ne 0 ]]; then
+    echo "ERROR: coverage-tools ABI validation failed for ${toolchain_ref}." >&2
+    exit 1
+  fi
+
+  if [[ "${found_any}" -eq 0 ]]; then
+    echo "NOTE: no hashed Rust shared-library dependencies found in packaged coverage tools."
+  else
+    echo "Validated coverage-tools ABI against ${toolchain_ref}."
+  fi
+}
+
 collect_package_bins() {
   local llvm_cov_bin=""
   local llvm_profdata_bin=""
@@ -269,6 +334,13 @@ for bin in "${PACKAGE_BINS[@]}"; do
     exit 1
   fi
 done
+
+toolchain_tmp=""
+if [[ -n "${TOOLCHAIN_REFERENCE}" ]]; then
+  toolchain_tmp="$(mktemp -d "${TMPDIR:-/tmp}/coverage-toolchain.XXXXXX")"
+  trap '[[ -n "${toolchain_tmp}" ]] && rm -rf "${toolchain_tmp}"' EXIT
+  validate_rust_abi_match "${TOOLCHAIN_REFERENCE}" "${toolchain_tmp}"
+fi
 
 DEST_DIR="${OUT_DIR}/${FERROCENE_SHA}/${HOST_TRIPLE}"
 mkdir -p "${DEST_DIR}"
